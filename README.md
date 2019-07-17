@@ -1,4 +1,4 @@
-# harvest - Go bindings for OpenCage Geocoder
+# harvest - Go bindings for Harvest invoicing
 
 [![Build Status](https://travis-ci.org/rubenv/harvest.svg?branch=master)](https://travis-ci.org/rubenv/harvest) [![GoDoc](https://godoc.org/github.com/rubenv/harvest?status.png)](https://godoc.org/github.com/rubenv/harvest)
 
