@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
+	"strings"
 	"time"
 
 	"golang.org/x/text/language"
@@ -48,6 +49,7 @@ type Invoice struct {
 	DueDate    string    `json:"due_date"`
 	Customer   *Customer `json:"client"`
 	Amount     float64   `json:"amount"`
+	DueAmount  float64   `json:"due_amount"`
 	Tax        float64   `json:"tax"`
 	TaxAmount  float64   `json:"tax_amount"`
 	Tax2       float64   `json:"tax2"`
@@ -202,6 +204,45 @@ func (i *Invoice) Send(to []*Recipient) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("Failed to send invoice: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+type createPaymentRequest struct {
+	Amount   float64 `json:"amount"`
+	PaidDate string  `json:"paid_date"`
+	Notes    string  `json:"notes"`
+}
+
+func (i *Invoice) AddPayment(amount float64, date time.Time, counterParty, counterAccount string) error {
+	notes := strings.TrimSpace(fmt.Sprintf("%s\n%s", counterParty, counterAccount))
+
+	data, err := json.Marshal(createPaymentRequest{
+		Amount:   amount,
+		PaidDate: date.Format("2006-01-02"),
+		Notes:    notes,
+	})
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s/invoices/%d/payments", serverUrl, i.ID)
+	req, err := http.NewRequest("POST", url, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-type", "application/json")
+	req.Header.Set("Harvest-Account-ID", i.hv.username)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.password))
+
+	resp, err := i.hv.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("Failed to add payment: %d", resp.StatusCode)
 	}
 
 	return nil
