@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -328,9 +327,7 @@ type createPaymentRequest struct {
 	Notes    string  `json:"notes"`
 }
 
-func (i *Invoice) AddPayment(amount float64, date time.Time, counterParty, counterAccount string) error {
-	notes := strings.TrimSpace(fmt.Sprintf("%s\n%s", counterParty, counterAccount))
-
+func (i *Invoice) AddPayment(amount float64, date time.Time, notes string) error {
 	data, err := json.Marshal(createPaymentRequest{
 		Amount:   amount,
 		PaidDate: date.Format("2006-01-02"),
