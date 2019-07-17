@@ -31,18 +31,9 @@ func TestFetchInvoices(t *testing.T) {
 		}
 	*/
 
-	/*
-		i := inv[0]
-		err = i.Send([]*Recipient{
-			{
-				Name:  "John Doe",
-				Email: "john@example.com",
-			},
-		})
-		is.NoErr(err)
-	*/
-
 	i := inv[0]
+	is.True(len(i.LineItems) > 0)
+
 	r, err := hv.GetRecipients(i.Customer.ID)
 	is.NoErr(err)
 	is.True(len(r) > 0)
