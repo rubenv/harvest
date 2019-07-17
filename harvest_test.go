@@ -2,22 +2,27 @@ package harvest
 
 import (
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-var testUsername = os.Getenv("HV_TEST_USERNAME")
-var testPassword = os.Getenv("HV_TEST_PASSWORD")
+var testAccountID = os.Getenv("HV_TEST_ACCOUNTID")
+var testToken = os.Getenv("HV_TEST_TOKEN")
 
 func TestFetchInvoices(t *testing.T) {
-	if testUsername == "" || testPassword == "" {
+	if testAccountID == "" || testToken == "" {
 		t.SkipNow()
 	}
 
 	assert := assert.New(t)
 
-	hv, err := New(testUsername, testPassword)
+	accountID, err := strconv.ParseInt(testAccountID, 10, 64)
+	assert.NoError(err)
+	assert.True(accountID > 0)
+
+	hv, err := New(accountID, testToken)
 	assert.NoError(err)
 	assert.NotNil(hv)
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -13,8 +14,8 @@ import (
 const serverUrl = "https://api.harvestapp.com/api/v2"
 
 type Client struct {
-	username string
-	password string
+	accountID int64
+	token     string
 
 	client *http.Client
 }
@@ -100,7 +101,7 @@ type Recipient struct {
 	Email string `json:"email"`
 }
 
-func New(username, password string) (*Client, error) {
+func New(accountID int64, token string) (*Client, error) {
 	cookieJar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, err
@@ -114,9 +115,9 @@ func New(username, password string) (*Client, error) {
 	}
 
 	return &Client{
-		username: username,
-		password: password,
-		client:   client,
+		accountID: accountID,
+		token:     token,
+		client:    client,
 	}, nil
 }
 
@@ -125,8 +126,8 @@ func (hv *Client) FetchInvoices() ([]*Invoice, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Harvest-Account-ID", hv.username)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.password))
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
 
 	resp, err := hv.client.Do(req)
 	if err != nil {
@@ -158,8 +159,8 @@ func (hv *Client) GetRecipients(customer int64) ([]*Recipient, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Harvest-Account-ID", hv.username)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.password))
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
 
 	resp, err := hv.client.Do(req)
 	if err != nil {
@@ -221,8 +222,8 @@ func (i *Invoice) Send(subject, body string, to []*Recipient) error {
 		return err
 	}
 	req.Header.Set("Content-type", "application/json")
-	req.Header.Set("Harvest-Account-ID", i.hv.username)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.password))
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.token))
 
 	resp, err := i.hv.client.Do(req)
 	if err != nil {
@@ -254,8 +255,8 @@ func (i *Invoice) MarkSent() error {
 		return err
 	}
 	req.Header.Set("Content-type", "application/json")
-	req.Header.Set("Harvest-Account-ID", i.hv.username)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.password))
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.token))
 
 	resp, err := i.hv.client.Do(req)
 	if err != nil {
@@ -293,8 +294,8 @@ func (i *Invoice) AddPayment(amount float64, date time.Time, counterParty, count
 		return err
 	}
 	req.Header.Set("Content-type", "application/json")
-	req.Header.Set("Harvest-Account-ID", i.hv.username)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.password))
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.token))
 
 	resp, err := i.hv.client.Do(req)
 	if err != nil {
