@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"strconv"
@@ -16,8 +17,28 @@ const serverUrl = "https://api.harvestapp.com/api/v2"
 type Client struct {
 	accountID int64
 	token     string
+	company   *Company
 
 	client *http.Client
+}
+
+type Company struct {
+	BaseURI              string `json:"base_uri"`
+	FullDomain           string `json:"full_domain"`
+	Name                 string `json:"name"`
+	IsActive             bool   `json:"is_active"`
+	WeekStartDay         string `json:"week_start_day"`
+	WantsTimestampTimers bool   `json:"wants_timestamp_timers"`
+	TimeFormat           string `json:"time_format"`
+	PlanType             string `json:"plan_type"`
+	ExpenseFeature       bool   `json:"expense_feature"`
+	InvoiceFeature       bool   `json:"invoice_feature"`
+	EstimateFeature      bool   `json:"estimate_feature"`
+	ApprovalFeature      bool   `json:"approval_feature"`
+	Clock                string `json:"clock"`
+	DecimalSymbol        string `json:"decimal_symbol"`
+	ThousandsSeparator   string `json:"thousands_separator"`
+	ColorScheme          string `json:"color_scheme"`
 }
 
 type Invoice struct {
@@ -119,6 +140,37 @@ func New(accountID int64, token string) (*Client, error) {
 		token:     token,
 		client:    client,
 	}, nil
+}
+
+func (hv *Client) GetCompanyInfo() (*Company, error) {
+	if hv.company != nil {
+		return hv.company, nil
+	}
+
+	req, err := http.NewRequest("GET", serverUrl+"/company", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
+
+	resp, err := hv.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Failed to load company info: %d", resp.StatusCode)
+	}
+
+	info := &Company{}
+	err = json.NewDecoder(resp.Body).Decode(info)
+	if err != nil {
+		return nil, err
+	}
+
+	hv.company = info
+	return info, nil
 }
 
 func (hv *Client) FetchInvoices() ([]*Invoice, error) {
@@ -307,4 +359,28 @@ func (i *Invoice) AddPayment(amount float64, date time.Time, counterParty, count
 	}
 
 	return nil
+}
+
+func (i *Invoice) Download() (io.ReadCloser, error) {
+	info, err := i.hv.GetCompanyInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s/client/invoices/%s.pdf", info.BaseURI, i.ClientKey)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := i.hv.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("Failed to download PDF: %d", resp.StatusCode)
+	}
+	return resp.Body, nil
 }

@@ -1,6 +1,8 @@
 package harvest
 
 import (
+	"bytes"
+	"io/ioutil"
 	"os"
 	"strconv"
 	"testing"
@@ -42,4 +44,13 @@ func TestFetchInvoices(t *testing.T) {
 	r, err := hv.GetRecipients(i.Customer.ID)
 	assert.NoError(err)
 	assert.True(len(r) > 0)
+
+	rc, err := i.Download()
+	assert.NoError(err)
+	assert.NotNil(rc)
+	defer rc.Close()
+
+	data, err := ioutil.ReadAll(rc)
+	assert.NoError(err)
+	assert.True(bytes.HasPrefix(data, []byte("%PDF")))
 }
