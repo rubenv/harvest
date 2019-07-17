@@ -39,14 +39,19 @@ type Client struct {
 }
 
 type Invoice struct {
-	ID        int64     `json:"id"`
-	Number    string    `json:"number"`
-	State     string    `json:"state"`
-	SentAt    time.Time `json:"sent_at"`
-	IssueDate string    `json:"issue_date"`
-	DueDate   string    `json:"due_date"`
-	Customer  *Customer `json:"client"`
-	Amount    float64   `json:"amount"`
+	ID         int64     `json:"id"`
+	Number     string    `json:"number"`
+	State      string    `json:"state"`
+	SentAt     time.Time `json:"sent_at"`
+	PaidAt     time.Time `json:"paid_at"`
+	IssueDate  string    `json:"issue_date"`
+	DueDate    string    `json:"due_date"`
+	Customer   *Customer `json:"client"`
+	Amount     float64   `json:"amount"`
+	Tax        float64   `json:"tax"`
+	TaxAmount  float64   `json:"tax_amount"`
+	Tax2       float64   `json:"tax2"`
+	Tax2Amount float64   `json:"tax2_amount"`
 
 	hv *Client `json:"-"`
 }
