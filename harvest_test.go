@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cheekybits/is"
+	"github.com/stretchr/testify/assert"
 )
 
 var testUsername = os.Getenv("HV_TEST_USERNAME")
@@ -15,15 +15,15 @@ func TestFetchInvoices(t *testing.T) {
 		t.SkipNow()
 	}
 
-	is := is.New(t)
+	assert := assert.New(t)
 
 	hv, err := New(testUsername, testPassword)
-	is.NoErr(err)
-	is.NotNil(hv)
+	assert.NoError(err)
+	assert.NotNil(hv)
 
 	inv, err := hv.FetchInvoices()
-	is.NoErr(err)
-	is.True(len(inv) > 0)
+	assert.NoError(err)
+	assert.True(len(inv) > 0)
 
 	/*
 		for _, i := range inv {
@@ -32,9 +32,9 @@ func TestFetchInvoices(t *testing.T) {
 	*/
 
 	i := inv[0]
-	is.True(len(i.LineItems) > 0)
+	assert.True(len(i.LineItems) > 0)
 
 	r, err := hv.GetRecipients(i.Customer.ID)
-	is.NoErr(err)
-	is.True(len(r) > 0)
+	assert.NoError(err)
+	assert.True(len(r) > 0)
 }
