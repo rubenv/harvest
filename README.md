@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/rubenv/harvest.svg?branch=master)](https://travis-ci.org/rubenv/harvest) [![GoDoc](https://godoc.org/github.com/rubenv/harvest?status.png)](https://godoc.org/github.com/rubenv/harvest)
 
-https://harvest.com/
+https://www.getharvest.com/
 
 ## Installation
 ```
