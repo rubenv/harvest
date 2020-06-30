@@ -9,6 +9,8 @@ import (
 	"net/http/cookiejar"
 	"strconv"
 	"time"
+
+	"github.com/juju/ratelimit"
 )
 
 const serverUrl = "https://api.harvestapp.com/api/v2"
@@ -19,6 +21,7 @@ type Client struct {
 	company   *Company
 
 	client *http.Client
+	bucket *ratelimit.Bucket
 }
 
 type Company struct {
@@ -138,6 +141,7 @@ func New(accountID int64, token string) (*Client, error) {
 		accountID: accountID,
 		token:     token,
 		client:    client,
+		bucket:    ratelimit.NewBucket(15*time.Second/100, 100),
 	}, nil
 }
 
@@ -153,6 +157,7 @@ func (hv *Client) GetCompanyInfo() (*Company, error) {
 	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
 
+	hv.bucket.Wait(1)
 	resp, err := hv.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -180,6 +185,7 @@ func (hv *Client) FetchInvoices() ([]*Invoice, error) {
 	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
 
+	hv.bucket.Wait(1)
 	resp, err := hv.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -213,6 +219,7 @@ func (hv *Client) GetRecipients(customer int64) ([]*Recipient, error) {
 	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
 
+	hv.bucket.Wait(1)
 	resp, err := hv.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -276,6 +283,7 @@ func (i *Invoice) Send(subject, body string, to []*Recipient) error {
 	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.hv.accountID, 10))
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.token))
 
+	i.hv.bucket.Wait(1)
 	resp, err := i.hv.client.Do(req)
 	if err != nil {
 		return err
@@ -309,6 +317,7 @@ func (i *Invoice) MarkSent() error {
 	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.hv.accountID, 10))
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.token))
 
+	i.hv.bucket.Wait(1)
 	resp, err := i.hv.client.Do(req)
 	if err != nil {
 		return err
@@ -346,6 +355,7 @@ func (i *Invoice) AddPayment(amount float64, date time.Time, notes string) error
 	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.hv.accountID, 10))
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.token))
 
+	i.hv.bucket.Wait(1)
 	resp, err := i.hv.client.Do(req)
 	if err != nil {
 		return err
@@ -371,6 +381,7 @@ func (i *Invoice) Download() (io.ReadCloser, error) {
 		return nil, err
 	}
 
+	i.hv.bucket.Wait(1)
 	resp, err := i.hv.client.Do(req)
 	if err != nil {
 		return nil, err
