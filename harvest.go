@@ -315,7 +315,7 @@ func (i *Invoice) MarkSent() error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("Failed to send invoice: %d", resp.StatusCode)
+		return fmt.Errorf("Failed to mark invoice as sent: %d", resp.StatusCode)
 	}
 
 	return nil
