@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/juju/ratelimit"
 )
 
@@ -77,6 +78,13 @@ type Invoice struct {
 	LineItems []*LineItem `json:"line_items"`
 
 	hv *Client `json:"-"`
+}
+
+type Attachment struct {
+	Path     string
+	Filename string
+
+	hv *Client
 }
 
 type LineItem struct {
@@ -389,6 +397,71 @@ func (i *Invoice) Download() (io.ReadCloser, error) {
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		return nil, fmt.Errorf("Failed to download PDF: %d", resp.StatusCode)
+	}
+	return resp.Body, nil
+}
+
+func (i *Invoice) GetAttachments() ([]*Attachment, error) {
+	info, err := i.hv.GetCompanyInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s/client/invoices/%s", info.BaseURI, i.ClientKey)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	i.hv.bucket.Wait(1)
+	resp, err := i.hv.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Failed to fetch attachments: %d", resp.StatusCode)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*Attachment, 0)
+	doc.Find("#document-attachments li a").Each(func(_ int, s *goquery.Selection) {
+		result = append(result, &Attachment{
+			Path:     s.AttrOr("href", ""),
+			Filename: s.Text(),
+			hv:       i.hv,
+		})
+	})
+
+	return result, nil
+}
+
+func (a *Attachment) Download() (io.ReadCloser, error) {
+	info, err := a.hv.GetCompanyInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s%s", info.BaseURI, a.Path)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	a.hv.bucket.Wait(1)
+	resp, err := a.hv.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("Failed to download attachment: %d", resp.StatusCode)
 	}
 	return resp.Body, nil
 }
