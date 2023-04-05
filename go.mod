@@ -6,6 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/juju/ratelimit v1.0.2
 	github.com/stretchr/testify v1.8.2
+	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 )
 
 require (

@@ -37,7 +37,7 @@ func TestFetchInvoices(t *testing.T) {
 		log.Printf("%s (%s) -> %s (%s -> %s)", i.Number, i.Customer.Name, i.State, i.IssueDate, i.SentAt)
 	}
 
-	i := inv[0]
+	i := inv[2]
 	assert.True(len(i.LineItems) > 0)
 
 	r, err := hv.GetRecipients(i.Customer.ID)
@@ -65,4 +65,28 @@ func TestFetchInvoices(t *testing.T) {
 	data, err = io.ReadAll(rc)
 	assert.NoError(err)
 	assert.True(bytes.HasPrefix(data, []byte("%PDF")))
+}
+
+func TestFetchExpenses(t *testing.T) {
+	if testAccountID == "" || testToken == "" {
+		t.SkipNow()
+	}
+
+	assert := assert.New(t)
+
+	accountID, err := strconv.ParseInt(testAccountID, 10, 64)
+	assert.NoError(err)
+	assert.True(accountID > 0)
+
+	hv, err := New(accountID, testToken)
+	assert.NoError(err)
+	assert.NotNil(hv)
+
+	exp, err := hv.FetchExpenses()
+	assert.NoError(err)
+	assert.True(len(exp) > 0)
+
+	for _, e := range exp {
+		log.Printf("%s (%s) -> %s (%g)", e.SpentDate, e.Project.Name, e.Notes, e.TotalCost)
+	}
 }

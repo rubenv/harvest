@@ -5,16 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
+	"net/textproto"
 	"strconv"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/juju/ratelimit"
+	"golang.org/x/sync/errgroup"
 )
 
-const serverUrl = "https://api.harvestapp.com/api/v2"
+const serverUrl = "https://api.harvestapp.com/v2"
 
 type Client struct {
 	accountID int64
@@ -76,6 +79,19 @@ type Invoice struct {
 	PaidDate    string `json:"paid_date"`
 
 	LineItems []*LineItem `json:"line_items"`
+
+	hv *Client `json:"-"`
+}
+
+type Expense struct {
+	ID int64 `json:"id"`
+
+	// An object containing the associated project’s id, name, and code.
+	Project *Project `json:"project"`
+
+	SpentDate string  `json:"spent_date"`
+	Notes     string  `json:"notes"`
+	TotalCost float64 `json:"total_cost"`
 
 	hv *Client `json:"-"`
 }
@@ -464,4 +480,129 @@ func (a *Attachment) Download() (io.ReadCloser, error) {
 		return nil, fmt.Errorf("Failed to download attachment: %d", resp.StatusCode)
 	}
 	return resp.Body, nil
+}
+
+func (hv *Client) FetchExpenses() ([]*Expense, error) {
+	req, err := http.NewRequest("GET", serverUrl+"/expenses", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
+
+	hv.bucket.Wait(1)
+	resp, err := hv.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Failed to load expenses: %d", resp.StatusCode)
+	}
+
+	var r struct {
+		Expenses []*Expense `json:"expenses"`
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&r)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, exp := range r.Expenses {
+		exp.hv = hv
+	}
+
+	return r.Expenses, nil
+}
+
+type CreateExpense struct {
+	ProjectID         int64
+	ExpenseCategoryID int64
+	SpentDate         string
+	TotalCost         float64
+	Notes             string
+
+	Filename    string
+	ContentType string
+	File        io.Reader
+}
+
+func (hv *Client) CreateExpense(e *CreateExpense) error {
+	pr, pw := io.Pipe()
+	mp := multipart.NewWriter(pw)
+
+	var g errgroup.Group
+	g.Go(func() error {
+		defer pw.Close()
+
+		for _, f := range []struct {
+			Field string
+			Value string
+		}{
+			{"spent_date", e.SpentDate},
+			{"project_id", strconv.FormatInt(e.ProjectID, 10)},
+			{"expense_category_id", strconv.FormatInt(e.ExpenseCategoryID, 10)},
+			{"notes", e.Notes},
+			{"total_cost", fmt.Sprintf("%g", e.TotalCost)},
+		} {
+			fw, err := mp.CreateFormField(f.Field)
+			if err != nil {
+				return err
+			}
+
+			_, err = io.WriteString(fw, f.Value)
+			if err != nil {
+				return err
+			}
+		}
+
+		if e.File != nil {
+			h := textproto.MIMEHeader{}
+			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="receipt"; filename="%s"`, e.Filename))
+			h.Set("Content-Type", e.ContentType)
+
+			fw, err := mp.CreatePart(h)
+			if err != nil {
+				return err
+			}
+
+			_, err = io.Copy(fw, e.File)
+			if err != nil {
+				return err
+			}
+		}
+
+		return mp.Close()
+	})
+	g.Go(func() (err error) {
+		defer func() {
+			if err != nil {
+				_, _ = io.Copy(io.Discard, pr)
+			}
+		}()
+
+		req, err := http.NewRequest("POST", fmt.Sprintf("%s/expenses", serverUrl), pr)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", mp.FormDataContentType())
+		req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
+
+		hv.bucket.Wait(1)
+		resp, err := hv.client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated {
+			return fmt.Errorf("Failed to create expense: %d", resp.StatusCode)
+		}
+
+		return nil
+	})
+
+	return g.Wait()
 }
