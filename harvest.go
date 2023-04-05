@@ -598,7 +598,8 @@ func (hv *Client) CreateExpense(e *CreateExpense) error {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusCreated {
-			return fmt.Errorf("Failed to create expense: %d", resp.StatusCode)
+			body, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("Failed to create expense (%d): %s", resp.StatusCode, string(body))
 		}
 
 		return nil
