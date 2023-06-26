@@ -48,37 +48,38 @@ type Company struct {
 }
 
 type Invoice struct {
-	ID             int64     `json:"id"`
-	ClientKey      string    `json:"client_key"`
-	Number         string    `json:"number"`
-	PurchaseOrder  string    `json:"purchase_order"`
-	State          string    `json:"state"`
-	SentAt         time.Time `json:"sent_at"`
-	PaidAt         time.Time `json:"paid_at"`
-	ClosedAt       time.Time `json:"closed_at"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	Customer       *Customer `json:"client"`
-	Amount         float64   `json:"amount"`
-	DueAmount      float64   `json:"due_amount"`
-	Tax            float64   `json:"tax"`
-	TaxAmount      float64   `json:"tax_amount"`
-	Tax2           float64   `json:"tax2"`
-	Tax2Amount     float64   `json:"tax2_amount"`
-	Discount       float64   `json:"discount"`
-	DiscountAmount float64   `json:"discount_amount"`
-	Subject        string    `json:"subject"`
-	Notes          string    `json:"notes"`
-	Currency       string    `json:"currency"`
+	ID             int64     `json:"id,omitempty"`
+	ClientID       int64     `json:"client_id,omitempty"`
+	ClientKey      string    `json:"client_key,omitempty"`
+	Number         string    `json:"number,omitempty"`
+	PurchaseOrder  string    `json:"purchase_order,omitempty"`
+	State          string    `json:"state,omitempty"`
+	SentAt         time.Time `json:"sent_at,omitempty"`
+	PaidAt         time.Time `json:"paid_at,omitempty"`
+	ClosedAt       time.Time `json:"closed_at,omitempty"`
+	CreatedAt      time.Time `json:"created_at,omitempty"`
+	UpdatedAt      time.Time `json:"updated_at,omitempty"`
+	Customer       *Customer `json:"client,omitempty"`
+	Amount         float64   `json:"amount,omitempty"`
+	DueAmount      float64   `json:"due_amount,omitempty"`
+	Tax            float64   `json:"tax,omitempty"`
+	TaxAmount      float64   `json:"tax_amount,omitempty"`
+	Tax2           float64   `json:"tax2,omitempty"`
+	Tax2Amount     float64   `json:"tax2_amount,omitempty"`
+	Discount       float64   `json:"discount,omitempty"`
+	DiscountAmount float64   `json:"discount_amount,omitempty"`
+	Subject        string    `json:"subject,omitempty"`
+	Notes          string    `json:"notes,omitempty"`
+	Currency       string    `json:"currency,omitempty"`
 
-	PeriodStart string `json:"period_start"`
-	PeriodEnd   string `json:"period_end"`
-	IssueDate   string `json:"issue_date"`
-	DueDate     string `json:"due_date"`
-	PaymentTerm string `json:"payment_term"`
-	PaidDate    string `json:"paid_date"`
+	PeriodStart string `json:"period_start,omitempty"`
+	PeriodEnd   string `json:"period_end,omitempty"`
+	IssueDate   string `json:"issue_date,omitempty"`
+	DueDate     string `json:"due_date,omitempty"`
+	PaymentTerm string `json:"payment_term,omitempty"`
+	PaidDate    string `json:"paid_date,omitempty"`
 
-	LineItems []*LineItem `json:"line_items"`
+	LineItems []*LineItem `json:"line_items,omitempty"`
 
 	hv *Client `json:"-"`
 }
@@ -105,31 +106,31 @@ type Attachment struct {
 
 type LineItem struct {
 	// Unique ID for the line item.
-	ID int64 `json:"id"`
+	ID int64 `json:"id,omitempty"`
 
 	// An object containing the associated project’s id, name, and code.
-	Project *Project `json:"project"`
+	Project *Project `json:"project,omitempty"`
 
 	// The name of an invoice item category.
-	Kind string `json:"kind"`
+	Kind string `json:"kind,omitempty"`
 
 	// Text description of the line item.
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
 
 	// The unit quantity of the item.
-	Quantity float64 `json:"quantity"`
+	Quantity float64 `json:"quantity,omitempty"`
 
 	// The individual price per unit.
-	UnitPrice float64 `json:"unit_price"`
+	UnitPrice float64 `json:"unit_price,omitempty"`
 
 	// The line item subtotal (quantity * unit_price).
-	Amount float64 `json:"amount"`
+	Amount float64 `json:"amount,omitempty"`
 
 	// Whether the invoice’s tax percentage applies to this line item.
-	Taxed bool `json:"taxed"`
+	Taxed bool `json:"taxed,omitempty"`
 
 	// Whether the invoice’s tax2 percentage applies to this line item.
-	Taxed2 bool `json:"taxed_2"`
+	Taxed2 bool `json:"taxed_2,omitempty"`
 }
 
 type Project struct {
@@ -606,4 +607,32 @@ func (hv *Client) CreateExpense(e *CreateExpense) error {
 	})
 
 	return g.Wait()
+}
+
+func (hv *Client) CreateInvoice(invoice *Invoice) error {
+	data, err := json.Marshal(invoice)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s/invoices", serverUrl)
+	req, err := http.NewRequest("POST", url, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-type", "application/json")
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
+
+	hv.bucket.Wait(1)
+	resp, err := hv.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("Failed to create invoice: %d", resp.StatusCode)
+	}
+
+	return nil
 }
