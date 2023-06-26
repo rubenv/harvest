@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/textproto"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -238,8 +239,13 @@ func (hv *Client) FetchCustomers() ([]*Customer, error) {
 	return r.Customers, nil
 }
 
-func (hv *Client) FetchInvoices() ([]*Invoice, error) {
-	req, err := http.NewRequest("GET", serverUrl+"/invoices", nil)
+func (hv *Client) FetchInvoices(opts ...requestOption) ([]*Invoice, error) {
+	v := &url.Values{}
+	for _, o := range opts {
+		o(v)
+	}
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/invoices?%s", serverUrl, v.Encode()), nil)
 	if err != nil {
 		return nil, err
 	}
