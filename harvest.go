@@ -140,8 +140,10 @@ type Project struct {
 }
 
 type Customer struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID   int64  `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+
+	hv *Client `json:"-"`
 }
 
 type Recipient struct {
@@ -200,6 +202,40 @@ func (hv *Client) GetCompanyInfo() (*Company, error) {
 
 	hv.company = info
 	return info, nil
+}
+
+func (hv *Client) FetchCustomers() ([]*Customer, error) {
+	req, err := http.NewRequest("GET", serverUrl+"/clients", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
+
+	hv.bucket.Wait(1)
+	resp, err := hv.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Failed to load customers: %d", resp.StatusCode)
+	}
+
+	var r struct {
+		Customers []*Customer `json:"customers"`
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&r)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, c := range r.Customers {
+		c.hv = hv
+	}
+
+	return r.Customers, nil
 }
 
 func (hv *Client) FetchInvoices() ([]*Invoice, error) {
