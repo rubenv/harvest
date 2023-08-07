@@ -73,12 +73,13 @@ type Invoice struct {
 	Notes          string    `json:"notes,omitempty"`
 	Currency       string    `json:"currency,omitempty"`
 
-	PeriodStart string `json:"period_start,omitempty"`
-	PeriodEnd   string `json:"period_end,omitempty"`
-	IssueDate   string `json:"issue_date,omitempty"`
-	DueDate     string `json:"due_date,omitempty"`
-	PaymentTerm string `json:"payment_term,omitempty"`
-	PaidDate    string `json:"paid_date,omitempty"`
+	PeriodStart    string   `json:"period_start,omitempty"`
+	PeriodEnd      string   `json:"period_end,omitempty"`
+	IssueDate      string   `json:"issue_date,omitempty"`
+	DueDate        string   `json:"due_date,omitempty"`
+	PaymentTerm    string   `json:"payment_term,omitempty"`
+	PaymentOptions []string `json:"payment_options,omitempty"`
+	PaidDate       string   `json:"paid_date,omitempty"`
 
 	LineItems []*LineItem `json:"line_items,omitempty"`
 
