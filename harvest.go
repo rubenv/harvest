@@ -78,7 +78,7 @@ type Invoice struct {
 	IssueDate      string   `json:"issue_date,omitempty"`
 	DueDate        string   `json:"due_date,omitempty"`
 	PaymentTerm    string   `json:"payment_term,omitempty"`
-	PaymentOptions []string `json:"payment_options,omitempty"`
+	PaymentOptions []string `json:"payment_options"`
 	PaidDate       string   `json:"paid_date,omitempty"`
 
 	LineItems []*LineItem `json:"line_items,omitempty"`
