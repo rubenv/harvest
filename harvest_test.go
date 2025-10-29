@@ -52,19 +52,6 @@ func TestFetchInvoices(t *testing.T) {
 	data, err := io.ReadAll(rc)
 	assert.NoError(err)
 	assert.True(bytes.HasPrefix(data, []byte("%PDF")))
-
-	a, err := i.GetAttachments()
-	assert.NoError(err)
-	assert.True(len(a) > 0)
-
-	rc, err = a[0].Download()
-	assert.NoError(err)
-	assert.NotNil(rc)
-	defer rc.Close()
-
-	data, err = io.ReadAll(rc)
-	assert.NoError(err)
-	assert.True(bytes.HasPrefix(data, []byte("%PDF")))
 }
 
 func TestFetchExpenses(t *testing.T) {
@@ -89,4 +76,47 @@ func TestFetchExpenses(t *testing.T) {
 	for _, e := range exp {
 		log.Printf("%s (%s) -> %s (%g)", e.SpentDate, e.Project.Name, e.Notes, e.TotalCost)
 	}
+}
+
+func TestIterInvoices(t *testing.T) {
+	if testAccountID == "" || testToken == "" {
+		t.SkipNow()
+	}
+
+	assert := assert.New(t)
+
+	accountID, err := strconv.ParseInt(testAccountID, 10, 64)
+	assert.NoError(err)
+	assert.True(accountID > 0)
+
+	hv, err := New(accountID, testToken)
+	assert.NoError(err)
+	assert.NotNil(hv)
+
+	total := 0
+	found := false
+	for inv, err := range hv.Invoices() {
+		assert.NoError(err)
+		total += 1
+		log.Printf("%s (%s) -> %s (%s -> %s)", inv.Number, inv.Customer.Name, inv.State, inv.IssueDate, inv.SentAt)
+		assert.NotNil(inv.Hv)
+
+		if inv.ID == 38903909 {
+			found = true
+
+			a, err := inv.GetAttachments()
+			assert.NoError(err)
+			assert.True(len(a) > 0)
+
+			rc, err := a[0].Download()
+			assert.NoError(err)
+			assert.NotNil(rc)
+			defer rc.Close()
+
+			data, err := io.ReadAll(rc)
+			assert.NoError(err)
+			assert.True(bytes.HasPrefix(data, []byte("%PDF")))
+		}
+	}
+	assert.True(found)
 }

@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"iter"
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/textproto"
 	"net/url"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -83,7 +85,7 @@ type Invoice struct {
 
 	LineItems []*LineItem `json:"line_items,omitempty"`
 
-	hv *Client `json:"-"`
+	Hv *Client `json:"-"`
 }
 
 type Expense struct {
@@ -96,7 +98,7 @@ type Expense struct {
 	Notes     string  `json:"notes"`
 	TotalCost float64 `json:"total_cost"`
 
-	hv *Client `json:"-"`
+	Hv *Client `json:"-"`
 }
 
 type Attachment struct {
@@ -145,12 +147,16 @@ type Customer struct {
 	ID   int64  `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
 
-	hv *Client `json:"-"`
+	Hv *Client `json:"-"`
 }
 
 type Recipient struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
+}
+
+type Result[T any] struct {
+	client *Client
 }
 
 func New(accountID int64, token string) (*Client, error) {
@@ -206,10 +212,57 @@ func (hv *Client) GetCompanyInfo() (*Company, error) {
 	return info, nil
 }
 
-func (hv *Client) FetchCustomers() ([]*Customer, error) {
-	req, err := http.NewRequest("GET", serverUrl+"/clients", nil)
+func (hv *Client) Invoices(opts ...requestOption) iter.Seq2[*Invoice, error] {
+	return fetchIter[Invoice](hv, "invoices", "invoices", opts)
+}
+
+func (hv *Client) Customers(opts ...requestOption) iter.Seq2[*Customer, error] {
+	return fetchIter[Customer](hv, "customers", "customers", opts)
+}
+
+func (hv *Client) Expenses(opts ...requestOption) iter.Seq2[*Expense, error] {
+	return fetchIter[Expense](hv, "expenses", "expenses", opts)
+}
+
+func fetchIter[T any](hv *Client, field, path string, opts []requestOption) iter.Seq2[*T, error] {
+	v := &url.Values{}
+	for _, o := range opts {
+		o(v)
+	}
+	url := fmt.Sprintf("%s/%s?%s", serverUrl, path, v.Encode())
+
+	var buf []*T
+	return func(yield func(*T, error) bool) {
+		for {
+			if len(buf) == 0 && url != "" {
+				items, next, err := fetchAll[T](hv, url, field)
+				if err != nil {
+					if !yield(nil, err) {
+						return
+					}
+				}
+				buf = items
+				url = next
+			}
+
+			if len(buf) == 0 {
+				return
+			}
+
+			obj := buf[0]
+			buf = buf[1:]
+
+			if !yield(obj, nil) {
+				return
+			}
+		}
+	}
+}
+
+func fetchAll[T any](hv *Client, url, field string) ([]*T, string, error) {
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
@@ -217,27 +270,51 @@ func (hv *Client) FetchCustomers() ([]*Customer, error) {
 	hv.bucket.Wait(1)
 	resp, err := hv.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Failed to load customers: %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("Failed to load %s: %d", url, resp.StatusCode)
 	}
 
-	var r struct {
-		Customers []*Customer `json:"customers"`
-	}
+	r := make(map[string]json.RawMessage)
 
 	err = json.NewDecoder(resp.Body).Decode(&r)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	for _, c := range r.Customers {
-		c.hv = hv
+	var links struct {
+		Next string `json:"next"`
 	}
 
-	return r.Customers, nil
+	err = json.Unmarshal(r["links"], &links)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var results []*T
+	err = json.Unmarshal(r[field], &results)
+	if err != nil {
+		return nil, "", err
+	}
+
+	c := reflect.ValueOf(hv)
+	for _, obj := range results {
+		v := reflect.ValueOf(obj).Elem()
+		v.FieldByName("Hv").Set(c)
+	}
+
+	return results, links.Next, nil
+}
+
+func (hv *Client) FetchCustomers(opts ...requestOption) ([]*Customer, error) {
+	v := &url.Values{}
+	for _, o := range opts {
+		o(v)
+	}
+	result, _, err := fetchAll[Customer](hv, fmt.Sprintf("%s/customers?%s", serverUrl, v.Encode()), "customers")
+	return result, err
 }
 
 func (hv *Client) FetchInvoices(opts ...requestOption) ([]*Invoice, error) {
@@ -245,38 +322,8 @@ func (hv *Client) FetchInvoices(opts ...requestOption) ([]*Invoice, error) {
 	for _, o := range opts {
 		o(v)
 	}
-
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/invoices?%s", serverUrl, v.Encode()), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
-
-	hv.bucket.Wait(1)
-	resp, err := hv.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Failed to load invoices: %d", resp.StatusCode)
-	}
-
-	var r struct {
-		Invoices []*Invoice `json:"invoices"`
-	}
-
-	err = json.NewDecoder(resp.Body).Decode(&r)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, inv := range r.Invoices {
-		inv.hv = hv
-	}
-
-	return r.Invoices, nil
+	result, _, err := fetchAll[Invoice](hv, fmt.Sprintf("%s/invoices?%s", serverUrl, v.Encode()), "invoices")
+	return result, err
 }
 
 func (hv *Client) GetRecipients(customer int64) ([]*Recipient, error) {
@@ -348,11 +395,11 @@ func (i *Invoice) Send(subject, body string, to []*Recipient) error {
 		return err
 	}
 	req.Header.Set("Content-type", "application/json")
-	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.hv.accountID, 10))
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.token))
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.Hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.Hv.token))
 
-	i.hv.bucket.Wait(1)
-	resp, err := i.hv.client.Do(req)
+	i.Hv.bucket.Wait(1)
+	resp, err := i.Hv.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -382,11 +429,11 @@ func (i *Invoice) MarkSent() error {
 		return err
 	}
 	req.Header.Set("Content-type", "application/json")
-	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.hv.accountID, 10))
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.token))
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.Hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.Hv.token))
 
-	i.hv.bucket.Wait(1)
-	resp, err := i.hv.client.Do(req)
+	i.Hv.bucket.Wait(1)
+	resp, err := i.Hv.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -420,11 +467,11 @@ func (i *Invoice) AddPayment(amount float64, date time.Time, notes string) error
 		return err
 	}
 	req.Header.Set("Content-type", "application/json")
-	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.hv.accountID, 10))
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.hv.token))
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(i.Hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", i.Hv.token))
 
-	i.hv.bucket.Wait(1)
-	resp, err := i.hv.client.Do(req)
+	i.Hv.bucket.Wait(1)
+	resp, err := i.Hv.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -437,7 +484,7 @@ func (i *Invoice) AddPayment(amount float64, date time.Time, notes string) error
 }
 
 func (i *Invoice) Download() (io.ReadCloser, error) {
-	info, err := i.hv.GetCompanyInfo()
+	info, err := i.Hv.GetCompanyInfo()
 	if err != nil {
 		return nil, err
 	}
@@ -449,8 +496,8 @@ func (i *Invoice) Download() (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	i.hv.bucket.Wait(1)
-	resp, err := i.hv.client.Do(req)
+	i.Hv.bucket.Wait(1)
+	resp, err := i.Hv.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +509,7 @@ func (i *Invoice) Download() (io.ReadCloser, error) {
 }
 
 func (i *Invoice) GetAttachments() ([]*Attachment, error) {
-	info, err := i.hv.GetCompanyInfo()
+	info, err := i.Hv.GetCompanyInfo()
 	if err != nil {
 		return nil, err
 	}
@@ -473,8 +520,8 @@ func (i *Invoice) GetAttachments() ([]*Attachment, error) {
 		return nil, err
 	}
 
-	i.hv.bucket.Wait(1)
-	resp, err := i.hv.client.Do(req)
+	i.Hv.bucket.Wait(1)
+	resp, err := i.Hv.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +541,7 @@ func (i *Invoice) GetAttachments() ([]*Attachment, error) {
 		result = append(result, &Attachment{
 			Path:     s.AttrOr("href", ""),
 			Filename: s.Text(),
-			hv:       i.hv,
+			hv:       i.Hv,
 		})
 	})
 
@@ -526,38 +573,13 @@ func (a *Attachment) Download() (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-func (hv *Client) FetchExpenses() ([]*Expense, error) {
-	req, err := http.NewRequest("GET", serverUrl+"/expenses", nil)
-	if err != nil {
-		return nil, err
+func (hv *Client) FetchExpenses(opts ...requestOption) ([]*Expense, error) {
+	v := &url.Values{}
+	for _, o := range opts {
+		o(v)
 	}
-	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
-
-	hv.bucket.Wait(1)
-	resp, err := hv.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Failed to load expenses: %d", resp.StatusCode)
-	}
-
-	var r struct {
-		Expenses []*Expense `json:"expenses"`
-	}
-
-	err = json.NewDecoder(resp.Body).Decode(&r)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, exp := range r.Expenses {
-		exp.hv = hv
-	}
-
-	return r.Expenses, nil
+	result, _, err := fetchAll[Expense](hv, fmt.Sprintf("%s/expenses?%s", serverUrl, v.Encode()), "expenses")
+	return result, err
 }
 
 type CreateExpense struct {
