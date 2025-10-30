@@ -130,3 +130,23 @@ func TestIterInvoices(t *testing.T) {
 	assert.True(found)
 	assert.True(found2)
 }
+
+func TestGetInvoice(t *testing.T) {
+	if testAccountID == "" || testToken == "" {
+		t.SkipNow()
+	}
+
+	assert := assert.New(t)
+
+	accountID, err := strconv.ParseInt(testAccountID, 10, 64)
+	assert.NoError(err)
+	assert.True(accountID > 0)
+
+	hv, err := New(accountID, testToken)
+	assert.NoError(err)
+	assert.NotNil(hv)
+
+	inv, err := hv.GetInvoice(48542679)
+	assert.NoError(err)
+	assert.NotNil(inv)
+}

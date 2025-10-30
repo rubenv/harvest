@@ -373,6 +373,37 @@ func (hv *Client) FetchInvoices(opts ...requestOption) ([]*Invoice, error) {
 	return result, err
 }
 
+func (hv *Client) GetInvoice(id int64) (*Invoice, error) {
+	url := fmt.Sprintf("%s/invoices/%d", serverUrl, id)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Harvest-Account-ID", strconv.FormatInt(hv.accountID, 10))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", hv.token))
+
+	hv.bucket.Wait(1)
+	resp, err := hv.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Failed to load %s: %d", url, resp.StatusCode)
+	}
+
+	r := Invoice{}
+
+	err = json.NewDecoder(resp.Body).Decode(&r)
+	if err != nil {
+		return nil, err
+	}
+
+	r.Hv = hv
+	return &r, nil
+}
+
 func (hv *Client) GetRecipients(customer int64) ([]*Recipient, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/contacts?client_id=%d", serverUrl, customer), nil)
 	if err != nil {
