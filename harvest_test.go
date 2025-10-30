@@ -95,6 +95,7 @@ func TestIterInvoices(t *testing.T) {
 
 	total := 0
 	found := false
+	found2 := false
 	for inv, err := range hv.Invoices() {
 		assert.NoError(err)
 		total += 1
@@ -117,6 +118,15 @@ func TestIterInvoices(t *testing.T) {
 			assert.NoError(err)
 			assert.True(bytes.HasPrefix(data, []byte("%PDF")))
 		}
+
+		if inv.ID == 48542679 {
+			p, err := inv.GetPayments()
+			assert.NoError(err)
+			assert.NotNil(p)
+
+			found2 = true
+		}
 	}
 	assert.True(found)
+	assert.True(found2)
 }

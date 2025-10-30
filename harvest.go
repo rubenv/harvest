@@ -155,6 +155,48 @@ type Recipient struct {
 	Email string `json:"email"`
 }
 
+type Payment struct {
+	// Unique ID for the payment.
+	ID int64 `json:"id"`
+
+	// The amount of the payment.
+	Amount float64 `json:"amount"`
+
+	// Date and time the payment was made.
+	PaidAt time.Time `json:"paid_at"`
+
+	// Date the payment was made.
+	PaidDate string `json:"paid_date"`
+
+	// The name of the person who recorded the payment.
+	RecordedBy string `json:"recorded_by"`
+
+	// The email of the person who recorded the payment.
+	RecordedByEmail string `json:"recorded_by_email"`
+
+	// Any notes associated with the payment.
+	Notes string `json:"notes"`
+
+	// Either the card authorization or PayPal transaction ID.
+	TransactionID string `json:"transaction_id"`
+
+	// The payment gateway id and name used to process the payment.
+	PaymentGateway PaymentGateway `json:"payment_gateway"`
+
+	// Date and time the payment was recorded.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Date and time the payment was last updated.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	Hv *Client `json:"-"`
+}
+
+type PaymentGateway struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 type Result[T any] struct {
 	client *Client
 }
@@ -291,6 +333,11 @@ func fetchAll[T any](hv *Client, url, field string) ([]*T, string, error) {
 	err = json.Unmarshal(r["links"], &links)
 	if err != nil {
 		return nil, "", err
+	}
+
+	_, ok := r[field]
+	if !ok {
+		return nil, "", fmt.Errorf("Missing field: %s", field)
 	}
 
 	var results []*T
@@ -546,6 +593,11 @@ func (i *Invoice) GetAttachments() ([]*Attachment, error) {
 	})
 
 	return result, nil
+}
+
+func (i *Invoice) GetPayments() ([]*Payment, error) {
+	result, _, err := fetchAll[Payment](i.Hv, fmt.Sprintf("%s/invoices/%d/payments", serverUrl, i.ID), "invoice_payments")
+	return result, err
 }
 
 func (a *Attachment) Download() (io.ReadCloser, error) {
